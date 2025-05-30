@@ -1,109 +1,197 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ui version="4.0">
- <class>BookManager</class>
- <widget class="QMainWindow" name="BookManager">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>800</width>
-    <height>600</height>
-   </rect>
-  </property>
-  <property name="windowTitle">
-   <string>Book Manager - Ni Putu Alvina Putri (F1D022017)</string>
-  </property>
-  <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <!-- Form input -->
-    <item>
-     <layout class="QHBoxLayout" name="formLayout">
-      <item>
-       <widget class="QLabel" name="labelTitle">
-        <property name="text">
-         <string>Title:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="lineEditTitle"/>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelCategory">
-        <property name="text">
-         <string>Category:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="lineEditCategory"/>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelYear">
-        <property name="text">
-         <string>Year:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="lineEditYear"/>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btnSave">
-        <property name="text">
-         <string>Save</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
+import sys
+import csv
+import sqlite3
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox,
+    QFileDialog, QMdiArea, QMdiSubWindow, QSplitter
+)
+from PyQt5.QtCore import Qt
 
-    <!-- Search -->
-    <item>
-     <layout class="QHBoxLayout" name="searchLayout">
-      <item>
-       <widget class="QLabel" name="labelSearch">
-        <property name="text">
-         <string>Search:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="lineEditSearch">
-        <property name="placeholderText">
-         <string>Search by title...</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
 
-    <!-- Table -->
-    <item>
-     <widget class="QTableWidget" name="tableWidget"/>
-    </item>
+class BookManager(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.conn = sqlite3.connect("books.db")
+        self.c = self.conn.cursor()
+        self.c.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                year INTEGER NOT NULL
+            )
+        """)
+        self.conn.commit()
+        self.initUI()
+        self.load_data()
 
-    <!-- Buttons -->
-    <item>
-     <layout class="QHBoxLayout" name="buttonLayout">
-      <item>
-       <widget class="QPushButton" name="btnDelete">
-        <property name="text">
-         <string>Delete Selected</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btnExport">
-        <property name="text">
-         <string>Export to CSV</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
+    def initUI(self):
+        main_layout = QVBoxLayout()
 
-   </layout>
-  </widget>
- </widget>
-</ui>
+        # Header Info
+        header_label = QLabel("Book Manager - Ni Putu Alvina Putri (F1D022017)")
+        header_label.setStyleSheet("font-weight: bold; font-size: 16px; padding: 5px;")
+        main_layout.addWidget(header_label)
+
+        # QSplitter Layout
+        splitter = QSplitter(Qt.Vertical)
+
+        # --- Upper form ---
+        form_widget = QWidget()
+        form_layout = QHBoxLayout()
+
+        self.title_input = QLineEdit()
+        self.category_input = QLineEdit()
+        self.year_input = QLineEdit()
+
+        form_layout.addWidget(QLabel("Title:"))
+        form_layout.addWidget(self.title_input)
+        form_layout.addWidget(QLabel("Category:"))
+        form_layout.addWidget(self.category_input)
+        form_layout.addWidget(QLabel("Year:"))
+        form_layout.addWidget(self.year_input)
+
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_data)
+        form_layout.addWidget(self.save_button)
+
+        form_widget.setLayout(form_layout)
+        splitter.addWidget(form_widget)
+
+        # --- Search and Table ---
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+
+        # Search bar
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by title...")
+        self.search_input.textChanged.connect(self.search_data)
+        search_layout.addWidget(QLabel("Search:"))
+        search_layout.addWidget(self.search_input)
+        content_layout.addLayout(search_layout)
+
+        # Table
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["ID", "Title", "Category", "Year"])
+        self.table.setDragDropOverwriteMode(False)
+        self.table.setDragEnabled(True)
+        self.table.setAcceptDrops(True)
+        self.table.setDropIndicatorShown(True)
+        self.table.setEditTriggers(QTableWidget.DoubleClicked)
+        self.table.cellChanged.connect(self.edit_data)
+        content_layout.addWidget(self.table)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.delete_button = QPushButton("Delete Selected")
+        self.delete_button.clicked.connect(self.delete_data)
+        self.export_button = QPushButton("Export to CSV")
+        self.export_button.clicked.connect(self.export_to_csv)
+        btn_layout.addWidget(self.delete_button)
+        btn_layout.addWidget(self.export_button)
+        content_layout.addLayout(btn_layout)
+
+        content_widget.setLayout(content_layout)
+        splitter.addWidget(content_widget)
+
+        main_layout.addWidget(splitter)
+        self.setLayout(main_layout)
+
+    def save_data(self):
+        title = self.title_input.text()
+        category = self.category_input.text()
+        year = self.year_input.text()
+
+        if title and category and year.isdigit():
+            self.c.execute("INSERT INTO books (title, category, year) VALUES (?, ?, ?)",
+                           (title, category, int(year)))
+            self.conn.commit()
+            self.clear_inputs()
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "Input Error", "Please enter valid data.")
+
+    def clear_inputs(self):
+        self.title_input.clear()
+        self.category_input.clear()
+        self.year_input.clear()
+
+    def load_data(self):
+        self.table.blockSignals(True)
+        self.table.setRowCount(0)
+        self.c.execute("SELECT * FROM books")
+        for row_data in self.c.fetchall():
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for col, data in enumerate(row_data):
+                item = QTableWidgetItem(str(data))
+                if col == 0:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(row, col, item)
+        self.table.blockSignals(False)
+
+    def search_data(self):
+        keyword = self.search_input.text()
+        self.table.setRowCount(0)
+        self.c.execute("SELECT * FROM books WHERE title LIKE ?", (f"%{keyword}%",))
+        for row_data in self.c.fetchall():
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for col, data in enumerate(row_data):
+                self.table.setItem(row, col, QTableWidgetItem(str(data)))
+
+    def edit_data(self, row, col):
+        id_item = self.table.item(row, 0)
+        new_value = self.table.item(row, col).text()
+        field = ["id", "title", "category", "year"][col]
+        if field == "year" and not new_value.isdigit():
+            QMessageBox.warning(self, "Edit Error", "Year must be a number.")
+            self.load_data()
+            return
+        self.c.execute(f"UPDATE books SET {field} = ? WHERE id = ?", (new_value, id_item.text()))
+        self.conn.commit()
+
+    def delete_data(self):
+        selected_row = self.table.currentRow()
+        if selected_row >= 0:
+            id_item = self.table.item(selected_row, 0)
+            self.c.execute("DELETE FROM books WHERE id = ?", (id_item.text(),))
+            self.conn.commit()
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "Delete Error", "Please select a row to delete.")
+
+    def export_to_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "", "CSV Files (*.csv)")
+        if path:
+            with open(path, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(["ID", "Title", "Category", "Year"])
+                self.c.execute("SELECT * FROM books")
+                for row in self.c.fetchall():
+                    writer.writerow(row)
+            QMessageBox.information(self, "Export Success", f"Data exported to {path}")
+
+
+class MainApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("MDI Book Manager - Ni Putu Alvina Putri (F1D022017)")
+        self.setGeometry(100, 100, 900, 600)
+
+        mdi_area = QMdiArea()
+        self.setCentralWidget(mdi_area)
+
+        sub = QMdiSubWindow()
+        sub.setWidget(BookManager())
+        sub.setWindowTitle("Book Manager")
+        mdi_area.addSubWindow(sub)
+        sub.show()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    win = MainApp()
+    win.show()
+    sys.exit(app.exec_())
